@@ -48,7 +48,7 @@ use core_graphics::{
 use objc2::{
   msg_send,
   rc::Retained,
-  runtime::{AnyClass as Class, AnyObject as Object, ClassBuilder as ClassDecl, Sel},
+  runtime::{AnyClass as Class, AnyObject as Object, Bool, ClassBuilder as ClassDecl, Sel},
 };
 use objc2_app_kit::{
   self as appkit, NSApp, NSApplicationPresentationOptions, NSBackingStoreType, NSColor, NSEvent,
@@ -62,7 +62,7 @@ use objc2_foundation::{
 };
 
 use super::{
-  ffi::{id, nil, NO},
+  ffi::{id, nil, NO, YES},
   view::ViewState,
 };
 
@@ -407,6 +407,11 @@ lazy_static! {
       window_superclass,
     )
     .unwrap();
+    decl.add_ivar::<Bool>(c"isResigningKey");
+    decl.add_method(
+      sel!(resignKeyWindow),
+      resign_key_window as extern "C" fn(_, _) -> _,
+    );
     decl.add_method(
       sel!(canBecomeMainWindow),
       util::yes as extern "C" fn(_, _) -> _,
@@ -418,6 +423,22 @@ lazy_static! {
     decl.add_method(sel!(sendEvent:), send_event as extern "C" fn(_, _, _));
     WindowClass(decl.register())
   };
+}
+
+extern "C" fn resign_key_window(this: &mut Object, _sel: Sel) {
+  // set an instance variable to indicate that the window is in the process of resigning key
+  // This is used in wry to support capturing mouse events even when the window is not key
+  unsafe {
+    unsafe {
+      let ivar: *mut Bool = this.get_mut_ivar("isResigningKey");
+      *ivar = YES;
+
+      let superclass = this.class().superclass().unwrap();
+      let _: () = msg_send![super(this, superclass), resignKeyWindow];
+
+      *ivar = NO;
+    }
+  }
 }
 
 extern "C" fn send_event(this: &Object, _sel: Sel, event: &NSEvent) {
