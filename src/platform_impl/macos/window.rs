@@ -410,7 +410,7 @@ lazy_static! {
     decl.add_ivar::<Bool>(c"isResigningKey");
     decl.add_method(
       sel!(resignKeyWindow),
-      resign_key_window as extern "C" fn(_, _) -> _,
+      resign_key_window as extern "C" fn(_, _),
     );
     decl.add_method(
       sel!(canBecomeMainWindow),
@@ -425,19 +425,17 @@ lazy_static! {
   };
 }
 
-extern "C" fn resign_key_window(this: &mut Object, _sel: Sel) {
-  // set an instance variable to indicate that the window is in the process of resigning key
-  // This is used in wry to support capturing mouse events even when the window is not key
+extern "C" fn resign_key_window(this: &mut Object, _cmd: Sel) {
   unsafe {
-    unsafe {
-      let ivar: *mut Bool = this.get_mut_ivar("isResigningKey");
-      *ivar = YES;
+    *this.get_mut_ivar("isResigningKey") = YES;
+    let this_ptr: *mut Object = this;
 
-      let superclass = this.class().superclass().unwrap();
-      let _: () = msg_send![super(this, superclass), resignKeyWindow];
+    let _: () = msg_send![
+      super(this_ptr, util::superclass(&*this_ptr)),
+      resignKeyWindow
+    ];
 
-      *ivar = NO;
-    }
+    *this.get_mut_ivar("isResigningKey") = NO;
   }
 }
 
@@ -529,7 +527,7 @@ impl UnownedWindow {
     if !util::is_main_thread() {
       panic!("Windows can only be created on the main thread on macOS");
     }
-    trace!("Creating new window");
+    println!("1 Creating new window");
 
     let _pool = unsafe { NSAutoreleasePool::new() };
     let ns_window = create_window(&win_attribs, &pl_attribs)
